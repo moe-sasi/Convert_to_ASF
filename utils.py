@@ -2,6 +2,7 @@ import re
 from typing import Dict, Iterable, List, Optional
 
 from rapidfuzz import fuzz, process
+import io
 
 
 def normalize_field_name(name: str) -> str:
@@ -61,3 +62,69 @@ def suggest_mappings(
         results[asf_field] = {"source_field": source_field, "score": score}
 
     return results
+
+
+def build_column_index_by_field(ws, header_row: int = 1) -> Dict[str, int]:
+    """
+    Return dict mapping ASF field name -> column index in the worksheet.
+    Field name is str(cell.value).strip().
+    """
+
+    column_index: Dict[str, int] = {}
+
+    for cell in ws[header_row]:
+        if cell.value is None:
+            continue
+
+        field_name = str(cell.value).strip()
+        if not field_name:
+            continue
+
+        column_index[field_name] = cell.column
+
+    return column_index
+
+
+def write_loan_data_to_asf(ws, start_row: int, asf_fields: Iterable[str], df, mapping):
+    """
+    ws: ASF worksheet
+    start_row: first ASF data row (e.g., 2)
+    asf_fields: ordered list of ASF header names
+    df: pandas DataFrame of source tape
+    mapping: dict {asf_field: {"source_field": <str or None>, "score": <int>}}
+    Logic:
+    - Build column index mapping using build_column_index_by_field.
+    - For each row in df:
+      - For each asf_field in asf_fields:
+        - Get mapped source_field; skip if None or "(unmapped)".
+        - Read value = df_row[source_field].
+        - Write value to target cell at (excel_row, col_index).
+    - Do NOT change number_format or styles of the target cells.
+    """
+
+    column_index = build_column_index_by_field(ws)
+
+    for row_offset, (_, df_row) in enumerate(df.iterrows()):
+        excel_row = start_row + row_offset
+
+        for asf_field in asf_fields:
+            mapping_info = mapping.get(asf_field, {})
+            source_field = mapping_info.get("source_field")
+
+            if source_field in (None, "(unmapped)"):
+                continue
+
+            if asf_field not in column_index:
+                continue
+
+            value = df_row.get(source_field)
+
+            target_cell = ws.cell(row=excel_row, column=column_index[asf_field])
+            target_cell.value = value
+
+
+def build_asf_output_stream(wb):
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
