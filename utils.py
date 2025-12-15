@@ -5,6 +5,16 @@ from rapidfuzz import fuzz, process
 import io
 
 
+def preprocess_value(asf_field, value):
+    """
+    Placeholder hook to adjust values before writing into ASF.
+    For now, just return the value unchanged.
+    Later we can add special handling for dates, percentages, etc.
+    """
+
+    return value
+
+
 def normalize_field_name(name: str) -> str:
     """
     Normalize field names for fuzzy matching:
@@ -118,6 +128,7 @@ def write_loan_data_to_asf(ws, start_row: int, asf_fields: Iterable[str], df, ma
                 continue
 
             value = df_row.get(source_field)
+            value = preprocess_value(asf_field, value)
 
             target_cell = ws.cell(row=excel_row, column=column_index[asf_field])
             target_cell.value = value
