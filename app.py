@@ -58,7 +58,9 @@ def load_tape_into_dataframe(file):
     raise ValueError("Unsupported file type. Please upload a .csv or .xlsx file.")
 
 
-def render_mapping_editor(asf_fields, tape_fields, current_mapping, file_key_prefix):
+def render_mapping_editor(
+    asf_fields, tape_fields, current_mapping, file_key_prefix, threshold
+):
     """
     Render a side-by-side editor:
     - Left: ASF field (text)
@@ -90,7 +92,7 @@ def render_mapping_editor(asf_fields, tape_fields, current_mapping, file_key_pre
                 "source field",
                 options=selection_options,
                 index=selection_options.index(default_value),
-                key=f"{file_key_prefix}{asf_field}",
+                key=f"{file_key_prefix}{asf_field}_{threshold}",
             )
 
         with col3:
@@ -145,7 +147,8 @@ def render_main_content(asf_template_file, tape_files, threshold):
         return
 
     asf_fields = []
-    threshold_changed = st.session_state.get("last_threshold") != threshold
+    previous_threshold = st.session_state.get("last_threshold")
+    threshold_changed = previous_threshold != threshold
     st.session_state["last_threshold"] = threshold
 
     if asf_template_file:
@@ -154,6 +157,15 @@ def render_main_content(asf_template_file, tape_files, threshold):
 
         wb, ws = load_asf_template(asf_template_file)
         asf_fields = get_asf_fields(ws)
+
+    if threshold_changed:
+        # Clear stored mappings and widget state so new threshold suggestions become defaults
+        for tape_name, mapping in list(st.session_state["field_mappings"].items()):
+            for asf_field in mapping.keys():
+                st.session_state.pop(
+                    f"{tape_name}_{asf_field}_{previous_threshold}", None
+                )
+        st.session_state["field_mappings"] = {}
 
     if tape_files:
         tab_labels = [tape_file.name for tape_file in tape_files]
@@ -178,6 +190,7 @@ def render_main_content(asf_template_file, tape_files, threshold):
                     tape_cols,
                     mapping_dict,
                     file_key_prefix=f"{tape_file.name}_",
+                    threshold=threshold,
                 )
 
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
