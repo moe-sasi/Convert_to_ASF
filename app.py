@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from openpyxl import load_workbook
 
 
 def initialize_session_state():
@@ -11,6 +12,32 @@ def initialize_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def load_asf_template(template_file, sheet_name=None):
+    """
+    Load ASF template workbook and return (workbook, worksheet).
+    If sheet_name is None, use the first sheet.
+    """
+
+    template_file.seek(0)
+    workbook = load_workbook(template_file)
+
+    worksheet_name = sheet_name or workbook.sheetnames[0]
+    worksheet = workbook[worksheet_name]
+
+    return workbook, worksheet
+
+
+def get_asf_fields(ws, header_row=1):
+    """
+    Read the header row from the ASF worksheet and return a list of non-empty field names.
+    """
+
+    rows = ws.iter_rows(min_row=header_row, max_row=header_row, values_only=True)
+    header_cells = next(rows, [])
+
+    return [str(cell).strip() for cell in header_cells if cell is not None and str(cell).strip()]
 
 
 def load_tape_into_dataframe(file):
@@ -67,6 +94,12 @@ def render_main_content(asf_template_file, tape_files):
     if asf_template_file:
         st.markdown(f"**ASF template uploaded:** {asf_template_file.name}")
         st.caption("ASF template uploaded")
+
+        wb, ws = load_asf_template(asf_template_file)
+        asf_fields = get_asf_fields(ws)
+
+        st.markdown("**ASF Fields (header row):**")
+        st.write(asf_fields)
 
     if tape_files:
         for tape_file in tape_files:
