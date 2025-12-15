@@ -152,9 +152,6 @@ def render_main_content(asf_template_file, tape_files, threshold):
         wb, ws = load_asf_template(asf_template_file)
         asf_fields = get_asf_fields(ws)
 
-        st.markdown("**ASF Fields (header row):**")
-        st.write(asf_fields)
-
     if tape_files:
         tab_labels = [tape_file.name for tape_file in tape_files]
         tabs = st.tabs(tab_labels)
