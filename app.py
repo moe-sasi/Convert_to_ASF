@@ -9,6 +9,7 @@ def initialize_session_state():
     defaults = {
         "field_mappings": {},
         "config": {},
+        "last_threshold": None,
     }
 
     for key, value in defaults.items():
@@ -144,6 +145,8 @@ def render_main_content(asf_template_file, tape_files, threshold):
         return
 
     asf_fields = []
+    threshold_changed = st.session_state.get("last_threshold") != threshold
+    st.session_state["last_threshold"] = threshold
 
     if asf_template_file:
         st.markdown(f"**ASF template uploaded:** {asf_template_file.name}")
@@ -164,7 +167,7 @@ def render_main_content(asf_template_file, tape_files, threshold):
 
                 tape_cols = list(dataframe.columns)
 
-                if tape_file.name not in st.session_state["field_mappings"]:
+                if threshold_changed or tape_file.name not in st.session_state["field_mappings"]:
                     st.session_state["field_mappings"][tape_file.name] = suggest_mappings(
                         asf_fields, tape_cols, threshold
                     )
