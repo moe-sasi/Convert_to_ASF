@@ -57,6 +57,52 @@ def load_tape_into_dataframe(file):
     raise ValueError("Unsupported file type. Please upload a .csv or .xlsx file.")
 
 
+def render_mapping_editor(asf_fields, tape_fields, current_mapping, file_key_prefix):
+    """
+    Render a side-by-side editor:
+    - Left: ASF field (text)
+    - Middle: selectbox over ["(unmapped)"] + tape_fields
+    - Right: match score (read-only)
+    Return updated mapping dict in same structure as current_mapping.
+    Use file_key_prefix + asf_field for Streamlit widget keys.
+    """
+
+    updated_mapping = {}
+
+    for asf_field in asf_fields:
+        source_field = None
+        score = None
+
+        if asf_field in current_mapping:
+            source_field = current_mapping[asf_field].get("source_field")
+            score = current_mapping[asf_field].get("score")
+
+        col1, col2, col3 = st.columns([3, 3, 1])
+        with col1:
+            st.text(asf_field)
+
+        selection_options = ["(unmapped)"] + list(tape_fields)
+        default_value = source_field if source_field in tape_fields else "(unmapped)"
+
+        with col2:
+            selected_source = st.selectbox(
+                "source field",
+                options=selection_options,
+                index=selection_options.index(default_value),
+                key=f"{file_key_prefix}{asf_field}",
+            )
+
+        with col3:
+            st.text(str(score))
+
+        updated_mapping[asf_field] = {
+            "source_field": None if selected_source == "(unmapped)" else selected_source,
+            "score": score,
+        }
+
+    return updated_mapping
+
+
 def render_sidebar():
     st.sidebar.header("Setup")
     st.sidebar.subheader("ASF template upload")
@@ -110,19 +156,31 @@ def render_main_content(asf_template_file, tape_files, threshold):
         st.write(asf_fields)
 
     if tape_files:
-        for tape_file in tape_files:
-            st.markdown(f"### {tape_file.name}")
-            dataframe = load_tape_into_dataframe(tape_file)
-            st.dataframe(dataframe.head())
+        tab_labels = [tape_file.name for tape_file in tape_files]
+        tabs = st.tabs(tab_labels)
 
-            tape_cols = list(dataframe.columns)
+        for tape_file, tab in zip(tape_files, tabs):
+            with tab:
+                st.markdown(f"### {tape_file.name}")
+                dataframe = load_tape_into_dataframe(tape_file)
+                st.dataframe(dataframe.head())
 
-            if tape_file.name not in st.session_state["field_mappings"]:
-                st.session_state["field_mappings"][tape_file.name] = suggest_mappings(
-                    asf_fields, tape_cols, threshold
+                tape_cols = list(dataframe.columns)
+
+                if tape_file.name not in st.session_state["field_mappings"]:
+                    st.session_state["field_mappings"][tape_file.name] = suggest_mappings(
+                        asf_fields, tape_cols, threshold
+                    )
+
+                mapping_dict = st.session_state["field_mappings"][tape_file.name]
+                updated_mapping = render_mapping_editor(
+                    asf_fields,
+                    tape_cols,
+                    mapping_dict,
+                    file_key_prefix=f"{tape_file.name}_",
                 )
 
-            st.json(st.session_state["field_mappings"][tape_file.name])
+                st.session_state["field_mappings"][tape_file.name] = updated_mapping
 
 
 def main():
