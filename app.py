@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
 
-from utils import suggest_mappings
+from utils import build_asf_output_stream, suggest_mappings, write_loan_data_to_asf
 
 
 def initialize_session_state():
@@ -181,6 +181,26 @@ def render_main_content(asf_template_file, tape_files, threshold):
                 )
 
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
+
+        if asf_template_file:
+            if st.button("Generate ASF Files"):
+                for tape_file in tape_files:
+                    df = load_tape_into_dataframe(tape_file)
+                    mapping = st.session_state["field_mappings"].get(
+                        tape_file.name, {}
+                    )
+                    wb, ws = load_asf_template(asf_template_file)
+                    asf_fields = get_asf_fields(ws)
+                    write_loan_data_to_asf(
+                        ws, start_row=2, asf_fields=asf_fields, df=df, mapping=mapping
+                    )
+                    output_stream = build_asf_output_stream(wb)
+                    st.download_button(
+                        label=f"Download ASF-mapped file for {tape_file.name}",
+                        data=output_stream,
+                        file_name=f"ASF_{tape_file.name}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
 
 
 def main():
