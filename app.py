@@ -2,6 +2,8 @@ import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
 
+from utils import suggest_mappings
+
 
 def initialize_session_state():
     defaults = {
@@ -12,6 +14,9 @@ def initialize_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+    if "field_mappings" not in st.session_state:
+        st.session_state["field_mappings"] = {}
 
 
 def load_asf_template(template_file, sheet_name=None):
@@ -69,13 +74,14 @@ def render_sidebar():
         key="tape_files",
     )
 
-    st.sidebar.subheader("Fuzzy match threshold")
-    st.sidebar.caption("Slider coming soon.")
+    threshold = st.sidebar.slider(
+        "Fuzzy match threshold", min_value=0, max_value=100, value=80
+    )
 
-    return asf_template_file, tape_files
+    return asf_template_file, tape_files, threshold
 
 
-def render_main_content(asf_template_file, tape_files):
+def render_main_content(asf_template_file, tape_files, threshold):
     st.title("ASF Loan Tape Mapper")
     st.subheader("Workflow")
     st.markdown(
@@ -90,6 +96,8 @@ def render_main_content(asf_template_file, tape_files):
     if not asf_template_file and not tape_files:
         st.info("Upload ASF template and loan tape files to begin.")
         return
+
+    asf_fields = []
 
     if asf_template_file:
         st.markdown(f"**ASF template uploaded:** {asf_template_file.name}")
@@ -107,11 +115,20 @@ def render_main_content(asf_template_file, tape_files):
             dataframe = load_tape_into_dataframe(tape_file)
             st.dataframe(dataframe.head())
 
+            tape_cols = list(dataframe.columns)
+
+            if tape_file.name not in st.session_state["field_mappings"]:
+                st.session_state["field_mappings"][tape_file.name] = suggest_mappings(
+                    asf_fields, tape_cols, threshold
+                )
+
+            st.json(st.session_state["field_mappings"][tape_file.name])
+
 
 def main():
     initialize_session_state()
-    asf_template_file, tape_files = render_sidebar()
-    render_main_content(asf_template_file, tape_files)
+    asf_template_file, tape_files, threshold = render_sidebar()
+    render_main_content(asf_template_file, tape_files, threshold)
 
 
 if __name__ == "__main__":
