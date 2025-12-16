@@ -113,7 +113,7 @@ def render_mapping_editor(
     updated_mapping = {}
     tape_samples = tape_samples or {}
 
-    header_cols = st.columns([3, 3, 1, 3])
+    header_cols = st.columns([3, 3, 1, 2], gap="small")
     with header_cols[0]:
         st.caption("ASF Field")
     with header_cols[1]:
@@ -121,7 +121,7 @@ def render_mapping_editor(
     with header_cols[2]:
         st.caption("Match Score")
     with header_cols[3]:
-        st.caption("Preview of first row data")
+        st.caption("Preview of first row")
 
     for asf_field in asf_fields:
         source_field = None
@@ -133,7 +133,7 @@ def render_mapping_editor(
             score = current_mapping[asf_field].get("score")
             use_constant = current_mapping[asf_field].get("use_constant", False)
 
-        col1, col2, col3, col4 = st.columns([3, 3, 1, 3])
+        col1, col2, col3, col4 = st.columns([3, 3, 1, 2])
 
         with col1:
             st.text(asf_field)
