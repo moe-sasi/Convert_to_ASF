@@ -154,7 +154,8 @@ def render_sidebar():
     if st.session_state.get("default_override_error"):
         st.sidebar.warning(
             "Default mapping_overrides.yaml could not be loaded: "
-            f"{st.session_state['default_override_error']}"
+            f"{st.session_state['default_override_error']}. "
+            "Override suggestions will fallback to exact field names."
         )
     else:
         st.sidebar.caption(
