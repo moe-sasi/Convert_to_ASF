@@ -2,14 +2,33 @@ import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
 
-from utils import build_asf_output_stream, suggest_mappings, write_loan_data_to_asf
+from pathlib import Path
+
+from utils import (
+    build_asf_output_stream,
+    load_override_mapping,
+    suggest_mappings,
+    write_loan_data_to_asf,
+)
 
 
 def initialize_session_state():
+    default_override_path = Path(__file__).with_name("mapping_overrides.yaml")
+    default_overrides = {}
+    default_override_error = None
+
+    if default_override_path.exists():
+        try:
+            default_overrides = load_override_mapping(default_override_path)
+        except Exception as exc:  # pylint: disable=broad-except
+            default_override_error = str(exc)
+
     defaults = {
         "field_mappings": {},
         "config": {},
         "last_threshold": None,
+        "override_mapping": default_overrides,
+        "default_override_error": default_override_error,
     }
 
     for key, value in defaults.items():
@@ -127,10 +146,25 @@ def render_sidebar():
         "Fuzzy match threshold", min_value=0, max_value=100, value=80
     )
 
-    return asf_template_file, tape_files, threshold
+    st.sidebar.caption(
+        "Mapping suggestions use the bundled mapping_overrides.yaml. "
+        "Edit that file to adjust alias preferences."
+    )
+
+    if st.session_state.get("default_override_error"):
+        st.sidebar.warning(
+            "Default mapping_overrides.yaml could not be loaded: "
+            f"{st.session_state['default_override_error']}"
+        )
+    else:
+        st.sidebar.caption(
+            f"Loaded {len(st.session_state.get('override_mapping', {}))} override entries"
+        )
+
+    return asf_template_file, tape_files, threshold, False
 
 
-def render_main_content(asf_template_file, tape_files, threshold):
+def render_main_content(asf_template_file, tape_files, threshold, override_changed):
     st.title("ASF Loan Tape Mapper")
     st.subheader("Workflow")
     st.markdown(
@@ -158,7 +192,7 @@ def render_main_content(asf_template_file, tape_files, threshold):
         wb, ws = load_asf_template(asf_template_file)
         asf_fields = get_asf_fields(ws)
 
-    if threshold_changed:
+    if threshold_changed or override_changed:
         # Clear stored mappings and widget state so new threshold suggestions become defaults
         for tape_name, mapping in list(st.session_state["field_mappings"].items()):
             for asf_field in mapping.keys():
@@ -181,7 +215,10 @@ def render_main_content(asf_template_file, tape_files, threshold):
 
                 if threshold_changed or tape_file.name not in st.session_state["field_mappings"]:
                     st.session_state["field_mappings"][tape_file.name] = suggest_mappings(
-                        asf_fields, tape_cols, threshold
+                        asf_fields,
+                        tape_cols,
+                        threshold,
+                        overrides=st.session_state.get("override_mapping"),
                     )
 
                 mapping_dict = st.session_state["field_mappings"][tape_file.name]
@@ -218,8 +255,8 @@ def render_main_content(asf_template_file, tape_files, threshold):
 
 def main():
     initialize_session_state()
-    asf_template_file, tape_files, threshold = render_sidebar()
-    render_main_content(asf_template_file, tape_files, threshold)
+    asf_template_file, tape_files, threshold, override_changed = render_sidebar()
+    render_main_content(asf_template_file, tape_files, threshold, override_changed)
 
 
 if __name__ == "__main__":

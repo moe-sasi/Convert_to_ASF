@@ -1,0 +1,13 @@
+# Default mapping overrides for ASF fields
+# Key: ASF field name
+# Value: list of alternative labels to aid fuzzy matching
+LOAN_TYPE_LS:
+  - Product Name
+  - Product Type
+  - Loan Product
+BORROWER_STATE:
+  - State
+  - Property State
+INTEREST_RATE:
+  - Rate
+  - Note Rate
