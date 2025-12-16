@@ -57,9 +57,15 @@ def suggest_mappings(
 
     results: Dict[str, Dict[str, Optional[int]]] = {}
     override_mapping: Dict[str, Iterable[str]] = overrides or {}
+    normalized_overrides: Dict[str, Iterable[str]] = {
+        normalize_field_name(key): value for key, value in override_mapping.items()
+    }
 
     for asf_field in asf_fields:
-        candidate_labels = [asf_field] + list(override_mapping.get(asf_field, []))
+        normalized_key = normalize_field_name(asf_field)
+        candidate_labels = [asf_field] + list(
+            normalized_overrides.get(normalized_key, [])
+        )
         best_match = None
 
         for candidate in candidate_labels:

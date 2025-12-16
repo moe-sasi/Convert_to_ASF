@@ -6,9 +6,15 @@ LOAN_TYPE_LS:
   - Product Name
   - Product Type
   - Loan Product
-BORROWER_STATE:
+STATE:
   - State
   - Property State
+POSTAL CODE:
+  - Zip Code
+  - ZIP
+  - Zip
+  - Postal
+  - Property Zip Code
 INTEREST_RATE:
   - Current Rate
   - Note Rate
