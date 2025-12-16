@@ -6,6 +6,7 @@ from pathlib import Path
 
 from utils import (
     build_asf_output_stream,
+    load_constant_values,
     load_override_mapping,
     suggest_mappings,
     write_loan_data_to_asf,
@@ -14,8 +15,11 @@ from utils import (
 
 def initialize_session_state():
     default_override_path = Path(__file__).with_name("mapping_overrides.yaml")
+    default_constant_path = Path(__file__).with_name("constant_values.yaml")
     default_overrides = {}
     default_override_error = None
+    default_constants = {}
+    default_constant_error = None
 
     if default_override_path.exists():
         try:
@@ -23,12 +27,20 @@ def initialize_session_state():
         except Exception as exc:  # pylint: disable=broad-except
             default_override_error = str(exc)
 
+    if default_constant_path.exists():
+        try:
+            default_constants = load_constant_values(default_constant_path)
+        except Exception as exc:  # pylint: disable=broad-except
+            default_constant_error = str(exc)
+
     defaults = {
         "field_mappings": {},
         "config": {},
         "last_threshold": None,
         "override_mapping": default_overrides,
         "default_override_error": default_override_error,
+        "constant_values": default_constants,
+        "constant_values_error": default_constant_error,
     }
 
     for key, value in defaults.items():
@@ -78,7 +90,12 @@ def load_tape_into_dataframe(file):
 
 
 def render_mapping_editor(
-    asf_fields, tape_fields, current_mapping, file_key_prefix, threshold
+    asf_fields,
+    tape_fields,
+    current_mapping,
+    file_key_prefix,
+    threshold,
+    constant_values=None,
 ):
     """
     Render a side-by-side editor:
@@ -94,17 +111,26 @@ def render_mapping_editor(
     for asf_field in asf_fields:
         source_field = None
         score = None
+        use_constant = False
 
         if asf_field in current_mapping:
             source_field = current_mapping[asf_field].get("source_field")
             score = current_mapping[asf_field].get("score")
+            use_constant = current_mapping[asf_field].get("use_constant", False)
 
         col1, col2, col3 = st.columns([3, 3, 1])
         with col1:
             st.text(asf_field)
 
         selection_options = ["(unmapped)"] + list(tape_fields)
+        constant_label = None
+        if constant_values and asf_field in constant_values:
+            constant_label = f"(constant: {constant_values[asf_field]})"
+            selection_options.append(constant_label)
+
         default_value = source_field if source_field in tape_fields else "(unmapped)"
+        if use_constant and constant_label:
+            default_value = constant_label
 
         with col2:
             selected_source = st.selectbox(
@@ -117,9 +143,11 @@ def render_mapping_editor(
         with col3:
             st.text(str(score))
 
+        final_source = None if selected_source in ("(unmapped)", constant_label) else selected_source
         updated_mapping[asf_field] = {
-            "source_field": None if selected_source == "(unmapped)" else selected_source,
+            "source_field": final_source,
             "score": score,
+            "use_constant": selected_source == constant_label,
         }
 
     return updated_mapping
@@ -160,6 +188,16 @@ def render_sidebar():
     else:
         st.sidebar.caption(
             f"Loaded {len(st.session_state.get('override_mapping', {}))} override entries"
+        )
+
+    st.sidebar.caption(
+        f"Loaded {len(st.session_state.get('constant_values', {}))} constant field values "
+        "from constant_values.yaml (if present)."
+    )
+    if st.session_state.get("constant_values_error"):
+        st.sidebar.warning(
+            "constant_values.yaml could not be loaded: "
+            f"{st.session_state['constant_values_error']}"
         )
 
     return asf_template_file, tape_files, threshold, False
@@ -215,11 +253,24 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                 tape_cols = list(dataframe.columns)
 
                 if threshold_changed or tape_file.name not in st.session_state["field_mappings"]:
-                    st.session_state["field_mappings"][tape_file.name] = suggest_mappings(
+                    mapping_suggestions = suggest_mappings(
                         asf_fields,
                         tape_cols,
                         threshold,
                         overrides=st.session_state.get("override_mapping"),
+                    )
+
+                    const_vals = st.session_state.get("constant_values") or {}
+                    for asf_field, const_val in const_vals.items():
+                        if asf_field not in asf_fields:
+                            continue
+                        mapping_suggestions.setdefault(
+                            asf_field, {"source_field": None, "score": None}
+                        )
+                        mapping_suggestions[asf_field]["use_constant"] = True
+
+                    st.session_state["field_mappings"][tape_file.name] = (
+                        mapping_suggestions
                     )
 
                 mapping_dict = st.session_state["field_mappings"][tape_file.name]
@@ -229,6 +280,7 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                     mapping_dict,
                     file_key_prefix=f"{tape_file.name}_",
                     threshold=threshold,
+                    constant_values=st.session_state.get("constant_values"),
                 )
 
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
@@ -243,7 +295,12 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                     wb, ws = load_asf_template(asf_template_file)
                     asf_fields = get_asf_fields(ws)
                     write_loan_data_to_asf(
-                        ws, start_row=2, asf_fields=asf_fields, df=df, mapping=mapping
+                        ws,
+                        start_row=2,
+                        asf_fields=asf_fields,
+                        df=df,
+                        mapping=mapping,
+                        constant_values=st.session_state.get("constant_values"),
                     )
                     output_stream = build_asf_output_stream(wb)
                     st.download_button(

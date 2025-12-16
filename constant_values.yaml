@@ -1,0 +1,11 @@
+# Optional fixed values to write into the ASF output.
+# Key: ASF field name
+# Value: constant value to use for every row
+# Example:
+# SERVICING FEE %: 0.0025
+
+Servicing Fee %: 0.0025
+Primary Servicer: 'SPS'
+HELOC Indicator: 0
+
+

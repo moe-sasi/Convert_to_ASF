@@ -1,7 +1,7 @@
 import io
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import yaml
 from rapidfuzz import fuzz, process
@@ -158,6 +158,60 @@ def load_override_mapping(file: Union[str, Path, io.BytesIO, io.BufferedReader])
     raise ValueError("Unsupported override file type")
 
 
+def load_constant_values(file: Union[str, Path, io.BytesIO, io.BufferedReader]) -> Dict[str, Any]:
+    """
+    Load a YAML file mapping ASF field names to constant values that
+    should be written directly into the ASF output.
+
+    Returns {ASF_field: value}.
+    """
+
+    def _load_from_bytes(raw_bytes: bytes, filename: str) -> Dict[str, Any]:
+        if not filename.endswith((".yaml", ".yml")):
+            raise ValueError("Constant values file must be .yaml or .yml")
+
+        try:
+            data = yaml.safe_load(raw_bytes)
+        except yaml.YAMLError as exc:  # pylint: disable=broad-except
+            error_location = ""
+            if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
+                mark = exc.problem_mark
+                error_location = f" (line {mark.line + 1}, column {mark.column + 1})"
+            raise ValueError(f"Invalid YAML in {filename}{error_location}: {exc}") from exc
+
+        if data is None:
+            return {}
+
+        if not isinstance(data, dict):
+            raise ValueError("Constant values file must contain a mapping of ASF fields")
+
+        normalized: Dict[str, Any] = {}
+
+        for key, value in data.items():
+            normalized[str(key)] = value
+
+        return normalized
+
+    if isinstance(file, (str, Path)):
+        path = Path(file)
+        if not path.exists():
+            raise FileNotFoundError(path)
+        return _load_from_bytes(path.read_bytes(), path.name.lower())
+
+    if hasattr(file, "getvalue"):
+        filename = str(getattr(file, "name", "constant_values.yaml")).lower()
+        return _load_from_bytes(file.getvalue(), filename)
+
+    if hasattr(file, "read"):
+        raw_bytes = file.read()
+        if hasattr(file, "seek"):
+            file.seek(0)
+        filename = str(getattr(file, "name", "constant_values.yaml")).lower()
+        return _load_from_bytes(raw_bytes, filename)
+
+    raise ValueError("Unsupported constant values file type")
+
+
 def build_column_index_by_field(ws, header_row: int = 1) -> Dict[str, int]:
     """
     Return dict mapping ASF field name -> column index in the worksheet.
@@ -179,18 +233,26 @@ def build_column_index_by_field(ws, header_row: int = 1) -> Dict[str, int]:
     return column_index
 
 
-def write_loan_data_to_asf(ws, start_row: int, asf_fields: Iterable[str], df, mapping):
+def write_loan_data_to_asf(
+    ws,
+    start_row: int,
+    asf_fields: Iterable[str],
+    df,
+    mapping,
+    constant_values: Optional[Dict[str, Any]] = None,
+):
     """
     ws: ASF worksheet
     start_row: first ASF data row (e.g., 2)
     asf_fields: ordered list of ASF header names
     df: pandas DataFrame of source tape
     mapping: dict {asf_field: {"source_field": <str or None>, "score": <int>}}
+    constant_values: dict {asf_field: value} to force a fixed value when no source_field is mapped
     Logic:
     - Build column index mapping using build_column_index_by_field.
     - For each row in df:
       - For each asf_field in asf_fields:
-        - Get mapped source_field; skip if None or "(unmapped)".
+        - Get mapped source_field; if None or "(unmapped)", try constant_values.
         - Read value = df_row[source_field].
         - Write value to target cell at (excel_row, col_index).
     - Do NOT change number_format or styles of the target cells.
@@ -204,8 +266,23 @@ def write_loan_data_to_asf(ws, start_row: int, asf_fields: Iterable[str], df, ma
         for asf_field in asf_fields:
             mapping_info = mapping.get(asf_field, {})
             source_field = mapping_info.get("source_field")
+            use_constant = mapping_info.get("use_constant", False)
+
+            if use_constant and constant_values and asf_field in constant_values:
+                if asf_field in column_index:
+                    value = preprocess_value(asf_field, constant_values[asf_field])
+                    target_cell = ws.cell(row=excel_row, column=column_index[asf_field])
+                    target_cell.value = value
+                continue
 
             if source_field in (None, "(unmapped)"):
+                if constant_values and asf_field in constant_values:
+                    value = preprocess_value(asf_field, constant_values[asf_field])
+                    if asf_field in column_index:
+                        target_cell = ws.cell(
+                            row=excel_row, column=column_index[asf_field]
+                        )
+                        target_cell.value = value
                 continue
 
             if asf_field not in column_index:

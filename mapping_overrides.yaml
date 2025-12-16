@@ -6,6 +6,12 @@ LOAN_TYPE_LS:
   - Product Name
   - Product Type
   - Loan Product
+CITY:
+  - Property City
+  - Town
+  - Municipality
+  - Location
+  - Property Location
 STATE:
   - State
   - Property State
@@ -92,3 +98,9 @@ GROSS MARGIN:
   - Gross Yield
   - Margin
   - Interest Margin
+Original Appraised Property Value:
+  - Appraised Value
+  - Property Appraisal Value
+  - Original Property Value
+  - Appraisal Value
+  - Property Value Amount

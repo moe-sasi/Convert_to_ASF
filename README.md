@@ -23,3 +23,16 @@ BORROWER_NAME: Customer Name
 
 Changes to `mapping_overrides.yaml` will be reflected the next time you start
 the app.
+
+## Constant field values
+
+To hard-code specific ASF fields to a single value for every row, add them to
+`constant_values.yaml` in the repository root:
+
+```
+# constant_values.yaml
+SERVICING FEE %: 0.0025
+MASTER SERVICER: Redwood
+```
+
+If present, these values are written even when a source column is not mapped.
