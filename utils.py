@@ -105,7 +105,14 @@ def load_override_mapping(file: Union[str, Path, io.BytesIO, io.BufferedReader])
         if not filename.endswith((".yaml", ".yml")):
             raise ValueError("Override file must be .yaml or .yml")
 
-        data = yaml.safe_load(raw_bytes)
+        try:
+            data = yaml.safe_load(raw_bytes)
+        except yaml.YAMLError as exc:
+            error_location = ""
+            if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
+                mark = exc.problem_mark
+                error_location = f" (line {mark.line + 1}, column {mark.column + 1})"
+            raise ValueError(f"Invalid YAML in {filename}{error_location}: {exc}") from exc
 
         if not isinstance(data, dict):
             raise ValueError("Override file must contain a mapping of ASF fields")
