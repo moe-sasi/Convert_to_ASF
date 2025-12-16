@@ -2,6 +2,7 @@
 # Key: ASF field name
 # Value: list of alternative labels to aid fuzzy matching
 LOAN_TYPE_LS:
+  - Product
   - Product Name
   - Product Type
   - Loan Product
@@ -9,5 +10,79 @@ BORROWER_STATE:
   - State
   - Property State
 INTEREST_RATE:
-  - Rate
+  - Current Rate
   - Note Rate
+LOAN NUMBER:
+  - ID
+  - Loan ID
+  - Mortgage ID
+  - Loan Identifier
+LIEN POSITION:
+  - Lien Type
+  - Position
+  - Lien Level
+  - Lien Order
+  - Mortgage Position
+ORIGINATION DATE:
+  - Loan CLosing Date
+  - Loan Date
+  - Funding Date
+  - Origination
+  - Date of Origination
+ORIGINAL LOAN AMOUNT:
+  - Original Principal
+  - Loan Amount
+  - Initial Loan Amount
+  - Original Amount
+  - Original Loan Balance
+# ORIGINAL INTEREST RATE
+#   - Note Rate at Origination
+#   - Initial Interest Rate
+#   - Starting Interest Rate
+#   - Original Rate
+ORIGINAL AMORTIZATION TERM:
+  - Original Term
+  - Amortization Term
+  - Loan Term
+  - Original Loan Term
+CURRENT LOAN AMOUNT:
+  - Current Principal
+  - Outstanding Balance
+  - Remaining Balance
+  - Current Balance
+  - Loan Balance
+  - Current Loan Balance
+CURRENT INTEREST RATE:
+  - Current Note Rate
+  - Current Rate of Interest
+  - Present Interest Rate
+  - Current Rate
+  - NOTE RATE
+CURRENT PAYMENT AMOUNT DUE:
+  - P and I Amount
+  - P&I Amount
+  - Current Monthly Payment
+  - Monthly Payment Due
+  - Current Payment
+  - Payment Amount
+  - Monthly Payment Amount
+  - Current Monthly P&I
+INTEREST PAID THROUGH DATE:
+  - Interest Paid To Date
+  - Total Interest Paid
+  - Cumulative Interest Paid
+  - Interest Paid
+  - Next Payment Due Date
+CURRENT PAYMENT STATUS:
+  - Payment Status
+  - Loan Status
+  - Current Status
+  - Payment Condition
+  - Loan Payment Status
+  - Delinquency
+GROSS MARGIN:
+  - Margin rate
+  - Yield Spread
+  - Gross Yield
+  - Margin
+  - Interest Margin
