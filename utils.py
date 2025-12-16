@@ -1,8 +1,10 @@
-import re
-from typing import Dict, Iterable, List, Optional
-
-from rapidfuzz import fuzz, process
 import io
+import re
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Union
+
+import yaml
+from rapidfuzz import fuzz, process
 
 
 def preprocess_value(asf_field, value):
@@ -35,6 +37,7 @@ def suggest_mappings(
     asf_fields: Iterable[str],
     tape_fields: Iterable[str],
     threshold: int = 80,
+    overrides: Optional[Dict[str, Iterable[str]]] = None,
 ) -> Dict[str, Dict[str, Optional[int]]]:
     """
     For each ASF field, find the best fuzzy match among tape_fields.
@@ -44,6 +47,8 @@ def suggest_mappings(
     }
     - Only accept a match if score >= threshold, otherwise source_field is None.
     - Use normalize_field_name and rapidfuzz.process.extractOne with fuzz.token_sort_ratio.
+    - If overrides are provided, they should map ASF field names to alternative
+      labels to try during matching.
     """
     tape_fields_list: List[str] = list(tape_fields)
     normalized_tape_fields: List[str] = [
@@ -51,27 +56,93 @@ def suggest_mappings(
     ]
 
     results: Dict[str, Dict[str, Optional[int]]] = {}
+    override_mapping: Dict[str, Iterable[str]] = overrides or {}
 
     for asf_field in asf_fields:
-        normalized_asf = normalize_field_name(asf_field)
-        match = process.extractOne(
-            normalized_asf,
-            normalized_tape_fields,
-            scorer=fuzz.token_sort_ratio,
-        )
+        candidate_labels = [asf_field] + list(override_mapping.get(asf_field, []))
+        best_match = None
+
+        for candidate in candidate_labels:
+            normalized_candidate = normalize_field_name(candidate)
+            match = process.extractOne(
+                normalized_candidate,
+                normalized_tape_fields,
+                scorer=fuzz.token_sort_ratio,
+            )
+
+            if not match:
+                continue
+
+            matched_value, matched_score, matched_index = match
+            score = int(matched_score)
+
+            if best_match is None or score > best_match[1]:
+                best_match = (matched_index, score)
 
         source_field = None
         score = None
 
-        if match:
-            matched_value, matched_score, matched_index = match
-            score = int(matched_score)
+        if best_match:
+            matched_index, matched_score = best_match
+            score = matched_score
             if score >= threshold:
                 source_field = tape_fields_list[matched_index]
 
         results[asf_field] = {"source_field": source_field, "score": score}
 
     return results
+
+
+def load_override_mapping(file: Union[str, Path, io.BytesIO, io.BufferedReader]) -> Dict[str, List[str]]:
+    """
+    Load a YAML mapping override file and normalize it to
+    {ASF_field: [alias1, alias2, ...]}.
+
+    Unsupported or malformed files raise ValueError.
+    """
+
+    def _load_from_bytes(raw_bytes: bytes, filename: str) -> Dict[str, List[str]]:
+        if not filename.endswith((".yaml", ".yml")):
+            raise ValueError("Override file must be .yaml or .yml")
+
+        data = yaml.safe_load(raw_bytes)
+
+        if not isinstance(data, dict):
+            raise ValueError("Override file must contain a mapping of ASF fields")
+
+        normalized: Dict[str, List[str]] = {}
+
+        for key, value in data.items():
+            if value is None:
+                continue
+
+            if isinstance(value, (list, tuple, set)):
+                aliases = [str(item) for item in value]
+            else:
+                aliases = [str(value)]
+
+            normalized[str(key)] = aliases
+
+        return normalized
+
+    if isinstance(file, (str, Path)):
+        path = Path(file)
+        if not path.exists():
+            raise FileNotFoundError(path)
+        return _load_from_bytes(path.read_bytes(), path.name.lower())
+
+    if hasattr(file, "getvalue"):
+        filename = str(getattr(file, "name", "override.yaml")).lower()
+        return _load_from_bytes(file.getvalue(), filename)
+
+    if hasattr(file, "read"):
+        raw_bytes = file.read()
+        if hasattr(file, "seek"):
+            file.seek(0)
+        filename = str(getattr(file, "name", "override.yaml")).lower()
+        return _load_from_bytes(raw_bytes, filename)
+
+    raise ValueError("Unsupported override file type")
 
 
 def build_column_index_by_field(ws, header_row: int = 1) -> Dict[str, int]:
