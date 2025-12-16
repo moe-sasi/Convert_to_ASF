@@ -12,6 +12,8 @@ from utils import (
     write_loan_data_to_asf,
 )
 
+st.set_page_config(page_title="ASF Loan Tape Mapper", layout="wide")
+
 
 def initialize_session_state():
     default_override_path = Path(__file__).with_name("mapping_overrides.yaml")
@@ -274,7 +276,7 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
             with tab:
                 st.markdown(f"### {tape_file.name}")
                 dataframe = load_tape_into_dataframe(tape_file)
-                st.dataframe(dataframe.head())
+                st.dataframe(dataframe.head(), use_container_width=True)
 
                 tape_cols = list(dataframe.columns)
                 sample_preview = {}
@@ -305,16 +307,52 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                     )
 
                 mapping_dict = st.session_state["field_mappings"][tape_file.name]
-                updated_mapping = render_mapping_editor(
-                    asf_fields,
-                    tape_cols,
-                    mapping_dict,
-                    file_key_prefix=f"{tape_file.name}_",
-                    threshold=threshold,
-                    constant_values=st.session_state.get("constant_values"),
-                    tape_samples=sample_preview,
-                )
+                ordered_fields = [field for field in asf_fields if field in mapping_dict]
+                chunk_size = (len(ordered_fields) + 2) // 3
+                first_fields = ordered_fields[:chunk_size]
+                second_fields = ordered_fields[chunk_size : 2 * chunk_size]
+                third_fields = ordered_fields[2 * chunk_size :]
 
+                st.markdown("#### Field Mappings")
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    updated_first = render_mapping_editor(
+                        first_fields,
+                        tape_cols,
+                        mapping_dict,
+                        file_key_prefix=f"{tape_file.name}_",
+                        threshold=threshold,
+                        constant_values=st.session_state.get("constant_values"),
+                        tape_samples=sample_preview,
+                    )
+
+                with col2:
+                    updated_second = render_mapping_editor(
+                        second_fields,
+                        tape_cols,
+                        mapping_dict,
+                        file_key_prefix=f"{tape_file.name}_",
+                        threshold=threshold,
+                        constant_values=st.session_state.get("constant_values"),
+                        tape_samples=sample_preview,
+                    )
+
+                with col3:
+                    updated_third = render_mapping_editor(
+                        third_fields,
+                        tape_cols,
+                        mapping_dict,
+                        file_key_prefix=f"{tape_file.name}_",
+                        threshold=threshold,
+                        constant_values=st.session_state.get("constant_values"),
+                        tape_samples=sample_preview,
+                    )
+
+                updated_mapping = dict(mapping_dict)
+                updated_mapping.update(updated_first)
+                updated_mapping.update(updated_second)
+                updated_mapping.update(updated_third)
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
 
         if asf_template_file:
