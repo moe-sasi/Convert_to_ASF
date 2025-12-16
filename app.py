@@ -96,17 +96,30 @@ def render_mapping_editor(
     file_key_prefix,
     threshold,
     constant_values=None,
+    tape_samples=None,
 ):
     """
     Render a side-by-side editor:
     - Left: ASF field (text)
     - Middle: selectbox over ["(unmapped)"] + tape_fields
     - Right: match score (read-only)
+    - Far Right: preview of the first few values from the selected tape field
     Return updated mapping dict in same structure as current_mapping.
     Use file_key_prefix + asf_field for Streamlit widget keys.
     """
 
     updated_mapping = {}
+    tape_samples = tape_samples or {}
+
+    header_cols = st.columns([3, 3, 1, 3])
+    with header_cols[0]:
+        st.caption("ASF Field")
+    with header_cols[1]:
+        st.caption("Source Field")
+    with header_cols[2]:
+        st.caption("Match Score")
+    with header_cols[3]:
+        st.caption("Preview of first row data")
 
     for asf_field in asf_fields:
         source_field = None
@@ -118,7 +131,8 @@ def render_mapping_editor(
             score = current_mapping[asf_field].get("score")
             use_constant = current_mapping[asf_field].get("use_constant", False)
 
-        col1, col2, col3 = st.columns([3, 3, 1])
+        col1, col2, col3, col4 = st.columns([3, 3, 1, 3])
+
         with col1:
             st.text(asf_field)
 
@@ -134,14 +148,24 @@ def render_mapping_editor(
 
         with col2:
             selected_source = st.selectbox(
-                "source field",
+                "Source Field",
                 options=selection_options,
                 index=selection_options.index(default_value),
                 key=f"{file_key_prefix}{asf_field}_{threshold}",
+                label_visibility="collapsed",
             )
 
         with col3:
             st.text(str(score))
+
+        sample_text = ""
+        if selected_source in tape_samples:
+            sample_text = tape_samples[selected_source]
+        elif use_constant and constant_label:
+            sample_text = f"Constant: {constant_values.get(asf_field)}"
+
+        with col4:
+            st.caption(sample_text if sample_text else " ")
 
         final_source = None if selected_source in ("(unmapped)", constant_label) else selected_source
         updated_mapping[asf_field] = {
@@ -200,10 +224,12 @@ def render_sidebar():
             f"{st.session_state['constant_values_error']}"
         )
 
-    return asf_template_file, tape_files, threshold, False
+    generate_clicked = st.sidebar.button("Generate ASF Files")
+
+    return asf_template_file, tape_files, threshold, False, generate_clicked
 
 
-def render_main_content(asf_template_file, tape_files, threshold, override_changed):
+def render_main_content(asf_template_file, tape_files, threshold, override_changed, sidebar_generate_clicked):
     st.title("ASF Loan Tape Mapper")
     st.subheader("Workflow")
     st.markdown(
@@ -251,6 +277,11 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                 st.dataframe(dataframe.head())
 
                 tape_cols = list(dataframe.columns)
+                sample_preview = {}
+                if not dataframe.empty:
+                    for col in tape_cols:
+                        val = dataframe[col].iloc[0]
+                        sample_preview[col] = "" if pd.isna(val) else str(val)
 
                 if threshold_changed or tape_file.name not in st.session_state["field_mappings"]:
                     mapping_suggestions = suggest_mappings(
@@ -281,12 +312,14 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                     file_key_prefix=f"{tape_file.name}_",
                     threshold=threshold,
                     constant_values=st.session_state.get("constant_values"),
+                    tape_samples=sample_preview,
                 )
 
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
 
         if asf_template_file:
-            if st.button("Generate ASF Files"):
+            generate_clicked = sidebar_generate_clicked or st.button("Generate ASF Files")
+            if generate_clicked:
                 for tape_file in tape_files:
                     df = load_tape_into_dataframe(tape_file)
                     mapping = st.session_state["field_mappings"].get(
@@ -313,8 +346,8 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
 
 def main():
     initialize_session_state()
-    asf_template_file, tape_files, threshold, override_changed = render_sidebar()
-    render_main_content(asf_template_file, tape_files, threshold, override_changed)
+    asf_template_file, tape_files, threshold, override_changed, sidebar_generate_clicked = render_sidebar()
+    render_main_content(asf_template_file, tape_files, threshold, override_changed, sidebar_generate_clicked)
 
 
 if __name__ == "__main__":
