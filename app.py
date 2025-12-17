@@ -7,7 +7,9 @@ from pathlib import Path
 from utils import (
     build_asf_output_stream,
     load_constant_values,
+    load_all_mappings,
     load_override_mapping,
+    save_mapping,
     suggest_mappings,
     write_loan_data_to_asf,
 )
@@ -326,6 +328,41 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                         mapping_suggestions
                     )
 
+                pending_loads = st.session_state.get("pending_loaded_mappings", {})
+                pending_for_tape = pending_loads.pop(tape_file.name, None)
+                if pending_loads != st.session_state.get("pending_loaded_mappings"):
+                    st.session_state["pending_loaded_mappings"] = pending_loads
+
+                if pending_for_tape:
+                    st.session_state["field_mappings"][tape_file.name] = pending_for_tape[
+                        "mapping"
+                    ]
+                    const_vals = st.session_state.get("constant_values") or {}
+                    for asf_field, info in pending_for_tape["mapping"].items():
+                        widget_key = f"{tape_file.name}_{asf_field}_{threshold}"
+                        constant_label = None
+                        if asf_field in const_vals:
+                            constant_label = f"(constant: {const_vals[asf_field]})"
+
+                        if info.get("use_constant") and constant_label:
+                            st.session_state[widget_key] = constant_label
+                        elif info.get("source_field"):
+                            st.session_state[widget_key] = info.get("source_field")
+                        else:
+                            st.session_state[widget_key] = "(unmapped)"
+
+                    missing_columns = pending_for_tape.get("missing_columns") or []
+                    if missing_columns:
+                        warning_list = ", ".join(sorted(missing_columns))
+                        st.warning(
+                            "Some columns from the saved mapping were not found in the "
+                            f"current file: {warning_list}. They have been left unmapped."
+                        )
+
+                    mapping_loaded_name = pending_for_tape.get("mapping_name")
+                    if mapping_loaded_name:
+                        st.success(f"Mapping '{mapping_loaded_name}' loaded.")
+
                 mapping_dict = st.session_state["field_mappings"][tape_file.name]
                 ordered_fields = [field for field in asf_fields if field in mapping_dict]
                 chunk_size = (len(ordered_fields) + 2) // 3
@@ -374,6 +411,106 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                 updated_mapping.update(updated_second)
                 updated_mapping.update(updated_third)
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
+
+                st.markdown("#### Save & Load Mapping")
+                saved_mappings, load_error = load_all_mappings()
+                if load_error:
+                    st.warning(load_error)
+
+                mapping_name = st.text_input(
+                    "Mapping name/label",
+                    key=f"{tape_file.name}_mapping_name",
+                    placeholder="e.g., Boarding Layout August",
+                )
+
+                overwrite_checkbox = False
+                if mapping_name and mapping_name in saved_mappings:
+                    st.warning(
+                        "A mapping with this name already exists. Enable overwrite to replace it."
+                    )
+                    overwrite_checkbox = st.checkbox(
+                        "Overwrite existing mapping with this name",
+                        key=f"{tape_file.name}_overwrite",
+                    )
+
+                if st.button("Save mapping", key=f"{tape_file.name}_save_mapping"):
+                    mapping_name = mapping_name.strip()
+                    mapped_fields = [
+                        field
+                        for field, info in updated_mapping.items()
+                        if info.get("source_field") or info.get("use_constant")
+                    ]
+
+                    if not mapping_name:
+                        st.error("Please provide a mapping name.")
+                    elif not mapped_fields:
+                        st.error("Define at least one mapped field before saving.")
+                    elif mapping_name in saved_mappings and not overwrite_checkbox:
+                        st.warning("Check the overwrite option to replace the existing mapping.")
+                    else:
+                        try:
+                            save_mapping(
+                                mapping_name,
+                                updated_mapping,
+                                source_columns=tape_cols,
+                                asf_fields=asf_fields,
+                            )
+                        except Exception as exc:  # pylint: disable=broad-except
+                            st.error(f"Could not save mapping: {exc}")
+                        else:
+                            if mapping_name in saved_mappings:
+                                st.success(f"Mapping '{mapping_name}' overwritten.")
+                            else:
+                                st.success(f"Mapping '{mapping_name}' saved.")
+
+                load_options = ["(select)"] + sorted(saved_mappings.keys())
+                selected_mapping = st.selectbox(
+                    "Load saved mapping",
+                    options=load_options,
+                    key=f"{tape_file.name}_load_mapping",
+                )
+
+                if st.button("Load mapping", key=f"{tape_file.name}_load_mapping_button"):
+                    if selected_mapping == "(select)":
+                        st.error("Select a saved mapping to load.")
+                    else:
+                        stored_mapping = saved_mappings.get(selected_mapping)
+                        if not stored_mapping:
+                            st.error("Saved mapping could not be found.")
+                        else:
+                            missing_columns = set()
+                            loaded_mapping = {}
+                            const_vals = st.session_state.get("constant_values") or {}
+
+                            for asf_field in asf_fields:
+                                stored_info = stored_mapping.get("mapping", {}).get(
+                                    asf_field, {}
+                                )
+                                source_field = stored_info.get("source_field")
+                                use_constant = stored_info.get("use_constant", False)
+
+                                if use_constant and asf_field not in const_vals:
+                                    use_constant = False
+
+                                if source_field and source_field not in tape_cols and not use_constant:
+                                    missing_columns.add(source_field)
+                                    source_field = None
+                                    use_constant = False
+
+                                loaded_mapping[asf_field] = {
+                                    "source_field": source_field,
+                                    "score": stored_info.get("score"),
+                                    "use_constant": use_constant,
+                                }
+
+                            pending = st.session_state.get("pending_loaded_mappings", {})
+                            pending[tape_file.name] = {
+                                "mapping": loaded_mapping,
+                                "missing_columns": sorted(missing_columns),
+                                "mapping_name": selected_mapping,
+                            }
+                            st.session_state["pending_loaded_mappings"] = pending
+                            st.rerun()
 
         if asf_template_file:
             generate_clicked = sidebar_generate_clicked or st.button("Generate ASF Files")
