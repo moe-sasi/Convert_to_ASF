@@ -1,5 +1,7 @@
 import io
+import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
@@ -210,6 +212,62 @@ def load_constant_values(file: Union[str, Path, io.BytesIO, io.BufferedReader]) 
         return _load_from_bytes(raw_bytes, filename)
 
     raise ValueError("Unsupported constant values file type")
+
+
+def _saved_mappings_path() -> Path:
+    return Path(__file__).with_name("saved_mappings.json")
+
+
+def load_all_mappings() -> tuple[Dict[str, Any], Optional[str]]:
+    """
+    Load saved mappings from the json file. Returns a tuple of (mappings, error_message).
+
+    If the file is missing or corrupted, returns an empty dict and a string error message.
+    """
+
+    path = _saved_mappings_path()
+
+    if not path.exists():
+        return {}, None
+
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:  # pylint: disable=broad-except
+        return {}, f"Could not read saved mappings: {exc}"
+
+    if not isinstance(data, dict):
+        return {}, "Saved mappings file is not in the expected format."
+
+    return data, None
+
+
+def get_mapping_by_name(name: str) -> Optional[Dict[str, Any]]:
+    mappings, _ = load_all_mappings()
+    return mappings.get(name)
+
+
+def save_mapping(
+    name: str,
+    mapping: Dict[str, Any],
+    *,
+    source_columns: Optional[list[str]] = None,
+    asf_fields: Optional[list[str]] = None,
+) -> None:
+    """
+    Persist a mapping configuration by name. Overwrites any existing entry with the same name.
+    """
+
+    mappings, _ = load_all_mappings()
+    payload = {
+        "mapping": mapping,
+        "created_at": datetime.utcnow().isoformat(),
+        "source_columns": source_columns or [],
+        "asf_fields": asf_fields or [],
+    }
+    mappings[name] = payload
+
+    path = _saved_mappings_path()
+    path.write_text(json.dumps(mappings, indent=2))
 
 
 def build_column_index_by_field(ws, header_row: int = 1) -> Dict[str, int]:
