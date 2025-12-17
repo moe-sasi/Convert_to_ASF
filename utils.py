@@ -1,7 +1,5 @@
 import io
-import json
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
@@ -17,85 +15,6 @@ def preprocess_value(asf_field, value):
     """
 
     return value
-
-
-MAPPINGS_STORE = Path(__file__).with_name("saved_mappings.json")
-
-
-def load_all_mappings(store_path: Path = MAPPINGS_STORE) -> Dict[str, Dict[str, Any]]:
-    """
-    Load all saved mappings from JSON file.
-
-    Returns a dict keyed by mapping name. Missing or invalid files
-    are treated as empty stores to keep the UI resilient.
-    """
-
-    if not store_path.exists():
-        return {}
-
-    try:
-        data = json.loads(store_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-    if not isinstance(data, dict):
-        return {}
-
-    return data
-
-
-def save_mapping(
-    name: str,
-    mapping: Dict[str, Any],
-    *,
-    overwrite: bool = False,
-    store_path: Path = MAPPINGS_STORE,
-    source_columns: Optional[Iterable[str]] = None,
-    tape_name: Optional[str] = None,
-) -> None:
-    """
-    Persist a mapping configuration to disk.
-
-    Raises ValueError if the mapping exists and overwrite=False.
-    """
-
-    normalized_name = name.strip()
-    if not normalized_name:
-        raise ValueError("Mapping name cannot be empty")
-
-    existing = load_all_mappings(store_path)
-
-    if normalized_name in existing and not overwrite:
-        raise ValueError(
-            f"Mapping '{normalized_name}' already exists. Enable overwrite to replace it."
-        )
-
-    record = {
-        "mapping_name": normalized_name,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "mapping": mapping,
-    }
-
-    if source_columns is not None:
-        record["source_columns"] = list(source_columns)
-
-    if tape_name is not None:
-        record["tape_name"] = tape_name
-
-    existing[normalized_name] = record
-
-    store_path.write_text(json.dumps(existing, indent=2))
-
-
-def get_mapping_by_name(
-    name: str, *, store_path: Path = MAPPINGS_STORE
-) -> Optional[Dict[str, Any]]:
-    """
-    Return a saved mapping by name, or None if not found or store is unreadable.
-    """
-
-    all_mappings = load_all_mappings(store_path)
-    return all_mappings.get(name)
 
 
 def normalize_field_name(name: str) -> str:
