@@ -6,8 +6,11 @@ from pathlib import Path
 
 from utils import (
     build_asf_output_stream,
+    get_mapping_by_name,
     load_constant_values,
+    load_all_mappings,
     load_override_mapping,
+    save_mapping,
     suggest_mappings,
     write_loan_data_to_asf,
 )
@@ -199,6 +202,133 @@ def render_mapping_editor(
     return updated_mapping
 
 
+def render_mapping_persistence_controls(
+    tape_file_name,
+    tape_columns,
+    asf_fields,
+    threshold,
+):
+    st.markdown("#### Save & Load Mapping")
+
+    try:
+        saved_mappings = load_all_mappings()
+    except ValueError as exc:  # pylint: disable=broad-except
+        st.warning(str(exc))
+        saved_mappings = {}
+
+    mapping_name = st.text_input(
+        "Mapping name/label",
+        key=f"mapping_label_{tape_file_name}",
+        help="Provide a name to save or overwrite a mapping",
+    )
+
+    overwrite = False
+    if mapping_name and mapping_name.strip() in saved_mappings:
+        overwrite = st.checkbox(
+            "Overwrite existing mapping with this name",
+            key=f"overwrite_{tape_file_name}",
+        )
+        st.caption("A mapping with this name already exists.")
+
+    if st.button("Save mapping", key=f"save_mapping_{tape_file_name}"):
+        mapping = st.session_state["field_mappings"].get(tape_file_name, {})
+        if not mapping_name or not mapping_name.strip():
+            st.error("Please provide a mapping name before saving.")
+        elif not mapping:
+            st.error("No mapping is available to save.")
+        elif not any(
+            info.get("source_field")
+            or info.get("use_constant")
+            for info in mapping.values()
+        ):
+            st.error("Define at least one mapped or constant field before saving.")
+        else:
+            try:
+                save_mapping(
+                    mapping_name.strip(),
+                    mapping,
+                    tape_columns=tape_columns,
+                    overwrite=overwrite,
+                )
+            except ValueError as exc:  # pylint: disable=broad-except
+                st.error(str(exc))
+            except OSError as exc:  # pylint: disable=broad-except
+                st.error(f"Could not save mapping: {exc}")
+            else:
+                if overwrite:
+                    st.success(f"Mapping '{mapping_name}' overwritten.")
+                else:
+                    st.success(f"Mapping '{mapping_name}' saved.")
+
+    st.divider()
+
+    mapping_names = sorted(saved_mappings.keys())
+    selected_mapping = st.selectbox(
+        "Load saved mapping",
+        options=[""] + mapping_names,
+        format_func=lambda x: "Select a mapping" if x == "" else x,
+        key=f"load_mapping_select_{tape_file_name}",
+    )
+
+    if st.button("Load mapping", key=f"load_mapping_{tape_file_name}"):
+        if not selected_mapping:
+            st.warning("Choose a mapping to load.")
+            return
+
+        try:
+            saved_mapping = get_mapping_by_name(selected_mapping)
+        except ValueError as exc:  # pylint: disable=broad-except
+            st.error(str(exc))
+            return
+        except OSError as exc:  # pylint: disable=broad-except
+            st.error(f"Could not read saved mappings: {exc}")
+            return
+
+        if not saved_mapping:
+            st.error(f"Mapping '{selected_mapping}' was not found.")
+            return
+
+        mapping_data = saved_mapping.get("mapping", {})
+        updated_mapping = st.session_state["field_mappings"].get(
+            tape_file_name, {}
+        )
+
+        constant_values = st.session_state.get("constant_values") or {}
+        missing_columns = []
+        for asf_field in asf_fields:
+            if asf_field not in mapping_data:
+                continue
+
+            new_info = dict(mapping_data.get(asf_field) or {})
+            source_field = new_info.get("source_field")
+            if source_field and source_field not in tape_columns:
+                missing_columns.append(source_field)
+                new_info["source_field"] = None
+                new_info["score"] = None
+
+            updated_mapping[asf_field] = new_info
+
+            widget_key = f"{tape_file_name}_{asf_field}_{threshold}"
+            widget_value = new_info.get("source_field")
+            if new_info.get("use_constant") and asf_field in constant_values:
+                widget_value = f"(constant: {constant_values[asf_field]})"
+            if widget_value is None:
+                st.session_state.pop(widget_key, None)
+            else:
+                st.session_state[widget_key] = widget_value
+
+        st.session_state["field_mappings"][tape_file_name] = updated_mapping
+
+        if missing_columns:
+            missing_list = ", ".join(sorted(set(missing_columns)))
+            st.warning(
+                "Mapping loaded, but these source columns were not found in the "
+                f"current file: {missing_list}. They have been left unmapped."
+            )
+
+        st.success(f"Mapping '{selected_mapping}' loaded.")
+
+
 def render_sidebar():
     st.sidebar.header("Setup")
     st.sidebar.subheader("ASF template upload")
@@ -374,6 +504,13 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                 updated_mapping.update(updated_second)
                 updated_mapping.update(updated_third)
                 st.session_state["field_mappings"][tape_file.name] = updated_mapping
+
+                render_mapping_persistence_controls(
+                    tape_file_name=tape_file.name,
+                    tape_columns=tape_cols,
+                    asf_fields=asf_fields,
+                    threshold=threshold,
+                )
 
         if asf_template_file:
             generate_clicked = sidebar_generate_clicked or st.button("Generate ASF Files")
