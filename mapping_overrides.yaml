@@ -111,4 +111,55 @@ Maturity Date:
   - Expiration Date
   - Loan End Date
   - Loan Matures
-  
+Originator DTI:
+  - Debt to Income Ratio
+  - Debt/Income Ratio
+  - Debt-Income Ratio
+  - DTI Ratio
+  - DTI
+Fully Indexed Rate:
+  - Adjusted Rate
+  - Fully Indexed Interest Rate
+  - Index Plus Margin
+  - Fully Indexed APR
+  - Total Interest Rate
+  - ARM Index Rate
+Borrower Last Name:
+  - Last Name
+  - Borrower Surname
+  - Customer Last Name
+  - Client Last Name
+  - Borrower Family Name
+  - Mortgager Last Name
+Borrower First Name:
+  - First Name
+  - Borrower Given Name
+  - Customer First Name
+  - Client First Name
+  - Mortgager First Name
+Co-Borrower Last Name:
+  - Co-Last Name
+  - Co-Borrower Surname
+  - Co-Customer Last Name
+  - Co-Client Last Name
+  - Co-Mortgager Last Name
+Co-Borrower First Name:
+  - Co-First Name
+  - Co-Borrower Given Name
+  - Co-Customer First Name
+  - Co-Client First Name
+  - Co-Mortgager First Name
+Borrower SSN:
+  - Social Security Number
+  - SSN
+  - Borrower Social Security Number
+  - Customer SSN
+  - Client SSN
+  - Mortgager SSN 
+Co-Borrower SSN:
+  - Co-Social Security Number
+  - Co-SSN
+  - Co-Borrower Social Security Number
+  - Co-Customer SSN
+  - Co-Client SSN
+  - Co-Mortgager SSN
