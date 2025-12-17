@@ -163,3 +163,9 @@ Co-Borrower SSN:
   - Co-Customer SSN
   - Co-Client SSN
   - Co-Mortgager SSN
+Original Primary Borrower FICO:
+  - Primary Borrower FICO
+  - Original Borrower FICO
+  - Initial Borrower FICO
+  - Original FICO Score
+  - Credit Score

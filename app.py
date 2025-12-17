@@ -112,6 +112,12 @@ def render_mapping_editor(
 
     updated_mapping = {}
     tape_samples = tape_samples or {}
+    used_source_fields = {
+        info.get("source_field")
+        for info in current_mapping.values()
+        if info.get("source_field") not in (None, "(unmapped)")
+        and not info.get("use_constant", False)
+    }
 
     header_cols = st.columns([3, 3, 1, 2], gap="small")
     with header_cols[0]:
@@ -138,22 +144,36 @@ def render_mapping_editor(
         with col1:
             st.text(asf_field)
 
-        selection_options = ["(unmapped)"] + list(tape_fields)
+        widget_key = f"{file_key_prefix}{asf_field}_{threshold}"
+        widget_value = st.session_state.get(widget_key)
+
+        selection_options = ["(unmapped)"]
         constant_label = None
         if constant_values and asf_field in constant_values:
             constant_label = f"(constant: {constant_values[asf_field]})"
             selection_options.append(constant_label)
 
-        default_value = source_field if source_field in tape_fields else "(unmapped)"
-        if use_constant and constant_label:
-            default_value = constant_label
+        available_fields = []
+        for field in tape_fields:
+            if field == source_field or field == widget_value or field not in used_source_fields:
+                available_fields.append(field)
+
+        for field in available_fields:
+            if field not in selection_options:
+                selection_options.append(field)
+
+        default_value = "(unmapped)"
+        for candidate in (widget_value, source_field, constant_label, "(unmapped)"):
+            if candidate in selection_options:
+                default_value = candidate
+                break
 
         with col2:
             selected_source = st.selectbox(
                 "Source Field",
                 options=selection_options,
                 index=selection_options.index(default_value),
-                key=f"{file_key_prefix}{asf_field}_{threshold}",
+                key=widget_key,
                 label_visibility="collapsed",
             )
 
@@ -163,7 +183,7 @@ def render_mapping_editor(
         sample_text = ""
         if selected_source in tape_samples:
             sample_text = tape_samples[selected_source]
-        elif use_constant and constant_label:
+        elif selected_source == constant_label or (use_constant and constant_label):
             sample_text = f"Constant: {constant_values.get(asf_field)}"
 
         with col4:
@@ -390,3 +410,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# To do
+# Only display matching score for mapped fields
+# Add "unmapped" option to selectboxes
+# Only display matching score for mapped fields
+# Add "unmapped" option to selectboxes
