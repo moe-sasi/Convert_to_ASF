@@ -6,11 +6,8 @@ from pathlib import Path
 
 from utils import (
     build_asf_output_stream,
-    get_mapping_by_name,
-    load_all_mappings,
     load_constant_values,
     load_override_mapping,
-    save_mapping,
     suggest_mappings,
     write_loan_data_to_asf,
 )
@@ -254,140 +251,6 @@ def render_sidebar():
     return asf_template_file, tape_files, threshold, False, generate_clicked
 
 
-def update_widget_selection(
-    tape_name: str,
-    threshold: int,
-    asf_field: str,
-    mapping_info: dict,
-    constant_values: dict,
-):
-    """Ensure selectbox state reflects the provided mapping info."""
-
-    widget_key = f"{tape_name}_{asf_field}_{threshold}"
-    selection_value = "(unmapped)"
-
-    constant_label = None
-    if asf_field in constant_values:
-        constant_label = f"(constant: {constant_values[asf_field]})"
-
-    if mapping_info.get("use_constant") and constant_label:
-        selection_value = constant_label
-    elif mapping_info.get("source_field"):
-        selection_value = mapping_info["source_field"]
-
-    st.session_state[widget_key] = selection_value
-
-
-def render_mapping_persistence_controls(
-    tape_file,
-    tape_cols,
-    mapping_dict,
-    threshold,
-    constant_values,
-):
-    """Render save/load controls for a single tape mapping."""
-
-    st.markdown("#### Save & Load Mapping")
-
-    mapping_name = st.text_input(
-        "Mapping name", key=f"mapping_name_{tape_file.name}", placeholder="Loan mapping A"
-    )
-    overwrite = st.checkbox(
-        "Overwrite existing mapping with this name",
-        key=f"overwrite_mapping_{tape_file.name}",
-        value=False,
-    )
-
-    save_clicked = st.button("Save mapping", key=f"save_mapping_{tape_file.name}")
-
-    if save_clicked:
-        cleaned_name = mapping_name.strip()
-        has_mappings = any(
-            info.get("source_field")
-            or info.get("use_constant")
-            for info in mapping_dict.values()
-        )
-
-        if not cleaned_name:
-            st.error("Please provide a mapping name before saving.")
-        elif not mapping_dict or not has_mappings:
-            st.error("Define at least one mapping before saving.")
-        else:
-            existing = get_mapping_by_name(cleaned_name)
-            try:
-                save_mapping(
-                    cleaned_name,
-                    mapping_dict,
-                    overwrite=overwrite,
-                    source_columns=tape_cols,
-                    tape_name=tape_file.name,
-                )
-            except ValueError as exc:
-                st.error(str(exc))
-            except Exception as exc:  # pylint: disable=broad-except
-                st.error(f"Unable to save mapping: {exc}")
-            else:
-                if existing and overwrite:
-                    st.success(f"Mapping '{cleaned_name}' overwritten.")
-                elif existing:
-                    st.warning(
-                        f"Mapping '{cleaned_name}' already exists. Check overwrite to replace it."
-                    )
-                else:
-                    st.success(f"Mapping '{cleaned_name}' saved.")
-
-    stored_mappings = load_all_mappings()
-    mapping_names = sorted(stored_mappings.keys())
-    mapping_options = mapping_names or ["(no saved mappings)"]
-    selected_mapping = st.selectbox(
-        "Load saved mapping", mapping_options, key=f"load_mapping_select_{tape_file.name}"
-    )
-    load_clicked = st.button("Load mapping", key=f"load_mapping_{tape_file.name}")
-
-    if load_clicked:
-        if not mapping_names:
-            st.warning("No saved mappings available to load.")
-            return mapping_dict
-
-        if not selected_mapping or selected_mapping not in stored_mappings:
-            st.warning("Select a saved mapping to load.")
-            return mapping_dict
-
-        saved = get_mapping_by_name(selected_mapping)
-        if not saved:
-            st.error(f"Mapping '{selected_mapping}' could not be found.")
-            return mapping_dict
-
-        loaded_mapping = saved.get("mapping", {})
-        updated_mapping = dict(mapping_dict)
-
-        missing_fields = []
-        for asf_field, mapping_info in loaded_mapping.items():
-            source_field = mapping_info.get("source_field")
-            if source_field and source_field not in tape_cols:
-                missing_fields.append(source_field)
-                mapping_info = dict(mapping_info)
-                mapping_info["source_field"] = None
-
-            updated_mapping[asf_field] = mapping_info
-            update_widget_selection(
-                tape_file.name, threshold, asf_field, mapping_info, constant_values
-            )
-
-        if missing_fields:
-            missing_list = ", ".join(sorted(set(missing_fields)))
-            st.warning(
-                "Loaded mapping has columns missing in this file: "
-                f"{missing_list}. They have been left unmapped."
-            )
-
-        st.session_state["field_mappings"][tape_file.name] = updated_mapping
-        st.success(f"Mapping '{selected_mapping}' loaded.")
-        return updated_mapping
-
-    return mapping_dict
-
-
 def render_main_content(asf_template_file, tape_files, threshold, override_changed, sidebar_generate_clicked):
     st.title("ASF Loan Tape Mapper")
     st.subheader("Workflow")
@@ -408,7 +271,6 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
     previous_threshold = st.session_state.get("last_threshold")
     threshold_changed = previous_threshold != threshold
     st.session_state["last_threshold"] = threshold
-    constant_values = st.session_state.get("constant_values") or {}
 
     if asf_template_file:
         st.markdown(f"**ASF template uploaded:** {asf_template_file.name}")
@@ -451,7 +313,8 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                         overrides=st.session_state.get("override_mapping"),
                     )
 
-                    for asf_field, const_val in constant_values.items():
+                    const_vals = st.session_state.get("constant_values") or {}
+                    for asf_field, const_val in const_vals.items():
                         if asf_field not in asf_fields:
                             continue
                         mapping_suggestions.setdefault(
@@ -464,13 +327,6 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                     )
 
                 mapping_dict = st.session_state["field_mappings"][tape_file.name]
-                mapping_dict = render_mapping_persistence_controls(
-                    tape_file,
-                    tape_cols,
-                    mapping_dict,
-                    threshold,
-                    constant_values,
-                )
                 ordered_fields = [field for field in asf_fields if field in mapping_dict]
                 chunk_size = (len(ordered_fields) + 2) // 3
                 first_fields = ordered_fields[:chunk_size]
@@ -487,7 +343,7 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                         mapping_dict,
                         file_key_prefix=f"{tape_file.name}_",
                         threshold=threshold,
-                        constant_values=constant_values,
+                        constant_values=st.session_state.get("constant_values"),
                         tape_samples=sample_preview,
                     )
 
@@ -498,7 +354,7 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                         mapping_dict,
                         file_key_prefix=f"{tape_file.name}_",
                         threshold=threshold,
-                        constant_values=constant_values,
+                        constant_values=st.session_state.get("constant_values"),
                         tape_samples=sample_preview,
                     )
 
@@ -509,7 +365,7 @@ def render_main_content(asf_template_file, tape_files, threshold, override_chang
                         mapping_dict,
                         file_key_prefix=f"{tape_file.name}_",
                         threshold=threshold,
-                        constant_values=constant_values,
+                        constant_values=st.session_state.get("constant_values"),
                         tape_samples=sample_preview,
                     )
 
