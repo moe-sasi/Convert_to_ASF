@@ -1,7 +1,5 @@
 import io
-import json
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
@@ -33,81 +31,6 @@ def normalize_field_name(name: str) -> str:
     normalized = re.sub(r"[^a-z0-9 ]+", "", normalized)
     normalized = re.sub(r"\s+", " ", normalized)
     return normalized.strip()
-
-
-SAVED_MAPPINGS_PATH = Path(__file__).with_name("saved_mappings.json")
-
-
-def load_all_mappings(path: Optional[Path] = None) -> Dict[str, Any]:
-    """
-    Load all saved mappings from disk.
-
-    Returns an empty dict when the file does not exist.
-    Raises ValueError when the file contents cannot be decoded.
-    """
-
-    storage_path = path or SAVED_MAPPINGS_PATH
-
-    if not storage_path.exists():
-        return {}
-
-    try:
-        content = storage_path.read_text()
-        data = json.loads(content)
-    except json.JSONDecodeError as exc:  # pylint: disable=broad-except
-        raise ValueError(
-            f"Saved mappings file '{storage_path.name}' is not valid JSON"
-        ) from exc
-
-    if not isinstance(data, dict):
-        raise ValueError("Saved mappings data must be a JSON object")
-
-    return data
-
-
-def save_mapping(
-    name: str,
-    mapping: Dict[str, Any],
-    tape_columns: Optional[Iterable[str]] = None,
-    overwrite: bool = False,
-    path: Optional[Path] = None,
-) -> None:
-    """
-    Persist a mapping configuration to disk.
-
-    Raises ValueError when the mapping name is empty or when trying to save
-    without overwrite permission for an existing mapping.
-    """
-
-    if not name or not name.strip():
-        raise ValueError("Mapping name cannot be empty")
-
-    storage_path = path or SAVED_MAPPINGS_PATH
-    existing = load_all_mappings(storage_path)
-
-    mapping_name = name.strip()
-    if mapping_name in existing and not overwrite:
-        raise ValueError(f"Mapping '{mapping_name}' already exists")
-
-    record = {
-        "mapping_name": mapping_name,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "mapping": mapping,
-        "tape_columns": list(tape_columns or []),
-    }
-
-    existing[mapping_name] = record
-
-    storage_path.parent.mkdir(parents=True, exist_ok=True)
-    storage_path.write_text(json.dumps(existing, indent=2))
-
-
-def get_mapping_by_name(name: str, path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
-    """Return a saved mapping by name, or None if it does not exist."""
-
-    storage_path = path or SAVED_MAPPINGS_PATH
-    existing = load_all_mappings(storage_path)
-    return existing.get(name)
 
 
 def suggest_mappings(
